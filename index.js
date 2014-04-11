@@ -1,3 +1,4 @@
+
 /**
  * toString() reference.
  */
@@ -10,270 +11,51 @@ var toString = Object.prototype.toString;
 
 var slice = Array.prototype.slice;
 
-/**
- * setImmediate() with fallback to process.nextTick() for node v0.8.x.
- */
 
-var setImmediate = global.setImmediate || process.nextTick;
 
 /**
- * Expose `co`.
- */
-
-module.exports = co;
-
-/**
- * Wrap the given generator `fn` and
- * return a thunk.
- *
- * @param {Function} fn
+ * Bind given function to given receiver.
+ * @param  {Function} func
+ * @param  {Object} receiver
  * @return {Function}
- * @api public
  */
-
-function co(fn) {
-  var isGenFun = isGeneratorFunction(fn);
-
-  return function (done) {
-    var ctx = this;
-
-    // in toThunk() below we invoke co()
-    // with a generator, so optimize for
-    // this case
-    var gen = fn;
-
-    // we only need to parse the arguments
-    // if gen is a generator function.
-    if (isGenFun) {
-      var args = slice.call(arguments), len = args.length;
-      var hasCallback = len && 'function' == typeof args[len - 1];
-      done = hasCallback ? args.pop() : error;
-      gen = fn.apply(this, args);
-    } else {
-      done = done || error;
-    }
-
-    next();
-
-    // #92
-    // wrap the callback in a setImmediate
-    // so that any of its errors aren't caught by `co`
-    function exit(err, res) {
-      setImmediate(done.bind(ctx, err, res));
-    }
-
-    function next(err, res) {
-      var ret;
-
-      // multiple args
-      if (arguments.length > 2) res = slice.call(arguments, 1);
-
-      // error
-      if (err) {
-        try {
-          ret = gen.throw(err);
-        } catch (e) {
-          return exit(e);
-        }
-      }
-
-      // ok
-      if (!err) {
-        try {
-          ret = gen.next(res);
-        } catch (e) {
-          return exit(e);
-        }
-      }
-
-      // done
-      if (ret.done) return exit(null, ret.value);
-
-      // normalize
-      ret.value = toThunk(ret.value, ctx);
-
-      // run
-      if ('function' == typeof ret.value) {
-        var called = false;
-        try {
-          ret.value.call(ctx, function(){
-            if (called) return;
-            called = true;
-            next.apply(ctx, arguments);
-          });
-        } catch (e) {
-          setImmediate(function(){
-            if (called) return;
-            called = true;
-            next(e);
-          });
-        }
-        return;
-      }
-
-      // invalid
-      next(new Error('yield a function, promise, generator, array, or object'));
-    }
+var bind = function(func, receiver) {
+  return function() {
+    func.apply(receiver, arguments);
   }
-}
+};
 
-/**
- * Convert `obj` into a normalized thunk.
- *
- * @param {Mixed} obj
- * @param {Mixed} ctx
- * @return {Function}
- * @api private
- */
 
-function toThunk(obj, ctx) {
-  if (Array.isArray(obj)) {
-    return objectToThunk.call(ctx, obj);
-  }
 
-  if (isGeneratorFunction(obj)) {
-    return co(obj.call(ctx));
-  }
-
-  if (isGenerator(obj)) {
-    return co(obj);
-  }
-
-  if (isPromise(obj)) {
-    return promiseToThunk(obj);
-  }
-
-  if ('function' == typeof obj) {
-    return obj;
-  }
-
-  if (isObject(obj) || Array.isArray(obj)) {
-    return objectToThunk.call(ctx, obj);
-  }
-
-  return obj;
-}
-
-/**
- * Convert an object of yieldables to a thunk.
- *
- * @param {Object} obj
- * @return {Function}
- * @api private
- */
-
-function objectToThunk(obj){
-  var ctx = this;
-
-  return function(done){
-    var keys = Object.keys(obj);
-    var pending = keys.length;
-    var results = new obj.constructor();
-    var finished;
-
-    if (!pending) {
-      setImmediate(function(){
-        done(null, results)
-      });
-      return;
-    }
-
-    for (var i = 0; i < keys.length; i++) {
-      run(obj[keys[i]], keys[i]);
-    }
-
-    function run(fn, key) {
-      if (finished) return;
-      try {
-        fn = toThunk(fn, ctx);
-
-        if ('function' != typeof fn) {
-          results[key] = fn;
-          return --pending || done(null, results);
-        }
-
-        fn.call(ctx, function(err, res){
-          if (finished) return;
-
-          if (err) {
-            finished = true;
-            return done(err);
-          }
-
-          results[key] = res;
-          --pending || done(null, results);
-        });
-      } catch (err) {
-        finished = true;
-        done(err);
-      }
-    }
-  }
-}
-
-/**
- * Convert `promise` to a thunk.
- *
- * @param {Object} promise
- * @return {Function}
- * @api private
- */
-
-function promiseToThunk(promise) {
-  return function(fn){
-    promise.then(function(res) {
-      fn(null, res);
-    }, fn);
-  }
-}
-
-/**
- * Check if `obj` is a promise.
- *
- * @param {Object} obj
- * @return {Boolean}
- * @api private
- */
-
-function isPromise(obj) {
-  return obj && 'function' == typeof obj.then;
-}
-
-/**
- * Check if `obj` is a generator.
- *
- * @param {Mixed} obj
- * @return {Boolean}
- * @api private
- */
-
-function isGenerator(obj) {
-  return obj && 'function' == typeof obj.next && 'function' == typeof obj.throw;
-}
 
 /**
  * Check if `obj` is a generator function.
  *
- * @param {Mixed} obj
+ * @param {Function} obj
  * @return {Boolean}
  * @api private
  */
-
 function isGeneratorFunction(obj) {
-  return obj && obj.constructor && 'GeneratorFunction' == obj.constructor.name;
+  return 'GeneratorFunction' == obj.constructor.name;
 }
+
+
 
 /**
- * Check for plain object.
+ * Check if `obj` is a plain javascript object or array.
  *
- * @param {Mixed} val
+ * @param {Function} obj
  * @return {Boolean}
  * @api private
  */
-
-function isObject(val) {
-  return val && Object == val.constructor;
+function isPlainObjectOrArray(obj) {
+  return 'object' === typeof obj &&
+    (obj.constructor.prototype === Array.prototype ||
+        obj.constructor.prototype.hasOwnProperty('isPrototypeOf')
+    );
 }
+
+
 
 /**
  * Throw `err` in a new stack.
@@ -292,4 +74,381 @@ function error(err) {
   setImmediate(function(){
     throw err;
   });
+}
+
+
+
+
+// ------------------------------------------------------------------------------------------------ //
+//
+// The main class
+//
+// ------------------------------------------------------------------------------------------------ //
+
+
+
+
+/**
+ * Handle a generator.
+ * @param {Object} generator A generator instance to iterate over.
+ */
+var Coroutine = function(generator) {
+  this.gen = generator;
+  this.handleAsyncResultB = bind(this.handleAsyncResult, this);
+  this.handleAsyncErrorB = bind(this.handleAsyncError, this);
+  this.handleGeneratorResultB = bind(this.handleGeneratorResult, this);
+  this.handleThunkResultB = bind(this.handleThunkResult, this);
+  this.handleObjectResultB = bind(this.handleObjectResult, this);
+}
+
+Coroutine.prototype.run = function(ctx, callback) {
+  this.ctx = ctx;
+  this.callback = callback;
+  this.finished = false;
+  this.handleAsyncResult();
+}
+
+
+Coroutine.prototype.done = function(err, returnValue) {
+  this.finished = true;
+
+  try {
+    this.callback(err, returnValue);
+  } catch (e) {
+    error(e);
+  }
+}
+
+
+Coroutine.prototype.continue = function(res) {
+  if (res instanceof Error) {
+    this.done(res);
+    return;
+  }
+
+  if (res.done) {
+    this.done(null, res.value);
+  } else {
+    this.execute(res.value);
+  }
+}
+
+
+
+Coroutine.prototype.tryCatch = function(func, receiver, arg) {
+  try {
+    return func.call(receiver, arg);
+  } catch (err) {
+    return err;
+  }
+}
+
+
+Coroutine.prototype.throw = function(err) {
+  this.continue(
+    this.tryCatch(this.gen.throw, this.gen, err)
+  );
+}
+
+
+Coroutine.prototype.handleAsyncResult = function(value) {
+  this.continue(
+    this.tryCatch(this.gen.next, this.gen, value)
+  );
+}
+
+
+Coroutine.prototype.handleAsyncError = function(err) {
+  this.continue(
+    this.tryCatch(this.gen.throw, this.gen, err)
+  );
+}
+
+
+Coroutine.prototype.executePromise = function(promise) {
+  promise.then(this.handleAsyncResultB, this.handleAsyncErrorB);
+}
+
+
+Coroutine.prototype.executeGenerator = function(generator) {
+  new Coroutine(generator).run(this.ctx, this.handleGeneratorResultB);
+}
+Coroutine.prototype.handleGeneratorResult = function(err, value) {
+  if (err) {
+    this.handleAsyncErrorB(err);
+  } else {
+    this.handleAsyncResultB(value);
+  }
+}
+
+
+Coroutine.prototype.executeThunk = function(thunk) {
+  thunk.call(this.ctx, this.handleThunkResultB);
+}
+Coroutine.prototype.handleThunkResult = function(err, value1) {
+  if (err) {
+    this.handleAsyncErrorB(err);
+  } else {
+    if (2 < arguments.length) {
+      this.handleAsyncResultB(slice.call(arguments, 1));
+    } else {
+      this.handleAsyncResultB(value1);
+    }
+  }
+}
+
+
+Coroutine.prototype.executeObject = function(obj) {
+  new CoGroup(obj).run(this.ctx, this.handleObjectResultB);
+}
+Coroutine.prototype.handleObjectResult = function(err, value1) {
+  if (err) {
+    this.handleAsyncErrorB(err);
+  } else {
+    if (2 < arguments.length) {
+      this.handleAsyncResultB.apply(this, slice.call(arguments, 1));
+    } else {
+      this.handleAsyncResultB(value1);
+    }
+  }
+}
+
+
+
+Coroutine.prototype.execute = function(value) {
+  try {
+
+    if (value) {
+      // promise
+      if ('function' === typeof value.then) {
+        this.executePromise(value);
+        return;
+      }
+      // generator
+      else if ('function' === typeof value.next && 'function' == typeof value.throw) {
+        this.executeGenerator(value);
+        return;
+      }
+      // is a function
+      else if ('function' === typeof value) {
+        // generator function
+        if (isGeneratorFunction(value)) {
+          this.executeGenerator(value.call(this.ctx));
+          return;
+        }
+        // assume it's a thunk
+        else {
+          this.executeThunk(value);
+          return;
+        }
+      } else if (isPlainObjectOrArray(value)) {
+        this.executeObject(value);
+        return;
+      }
+    }
+
+    throw new Error('yield a function, promise, generator, array, or object');
+
+  } catch (err) {
+    var self = this;
+    setImmediate(function(){
+      if (self.finished) return;
+
+      self.throw(err);
+    });
+  }
+}
+
+
+
+
+
+
+// ------------------------------------------------------------------------------------------------ //
+//
+// Handle a collection of yieldables in parallel
+//
+// This class has many similar methods to Coroutine, yet they are subtly different as in this
+// one we need to know which key each result is associated with, which requires the use of
+// closures, which slows things down.
+//
+// ------------------------------------------------------------------------------------------------ //
+
+
+
+
+/**
+ * Handle a group of yieldables in parallel.
+ * @param {Object} yieldables key-value pairs representing yieldables
+ */
+var CoGroup = function(yieldables) {
+  this.yieldables = yieldables;
+}
+
+
+CoGroup.prototype.done = function(err) {
+  this.finished = true;
+  this.callback(err, this.results);
+}
+
+
+CoGroup.prototype.run = function(ctx, callback) {
+  this.ctx = ctx;
+  this.callback = callback;
+
+  this.finished = false;
+  this.results = new this.yieldables.constructor();
+
+  var keys = Object.keys(this.yieldables);
+
+  if (!keys.length) {
+    var self = this;
+
+    setImmediate(function(){
+      self.done();
+    });
+    return;
+  }
+
+  this.pendingYields = keys.length;
+
+  for (var i = 0; i < keys.length; i++) {
+    if (this.finished) return;
+
+    this.execute(keys[i], this.yieldables[keys[i]]);
+  }
+}
+
+
+CoGroup.prototype.setValue = function(key, value) {
+  this.results[key] = value;
+  --this.pendingYields || this.done();
+}
+
+
+CoGroup.prototype.executePromise = function(key, promise) {
+  var self = this;
+
+  promise.then(
+    function(res) {
+      self.setValue(key, res);
+    },
+    function(err) {
+      self.done(err);
+    }
+  );
+}
+
+
+CoGroup.prototype.executeGenerator = function(key, generator) {
+  var self = this;
+
+  new Coroutine(generator).run(this.ctx, function(err, result) {
+    if (err) return self.done(err);
+
+    self.setValue(key, result);
+  });
+}
+
+
+CoGroup.prototype.executeThunk = function(key, thunk) {
+  var self = this;
+
+  thunk.call(this.ctx, function(err, result) {
+    if (err) return self.done(err);
+
+    self.setValue(key, result);
+  });
+}
+
+
+CoGroup.prototype.executeObject = function(key, obj) {
+  var self = this;
+
+  new CoGroup(obj).run(this.ctx, function(err, result) {
+    if (err) return self.done(err);
+
+    self.setValue(key, result);
+  });
+}
+
+
+CoGroup.prototype.execute = function(key, value) {
+  try {
+
+    // promise
+    if ('function' === typeof value.then) {
+      this.executePromise(key, value);
+    }
+    // generator
+    else if ('function' === typeof value.next && 'function' == typeof value.throw) {
+      this.executeGenerator(key, value);
+    }
+    // is a function
+    else if ('function' === typeof value) {
+      // generator function
+      if (isGeneratorFunction(value)) {
+        this.executeGenerator(key, value.call(this.ctx));
+      }
+      // assume it's a thunk
+      else {
+        this.executeThunk(key, value);
+      }
+    } else if (isPlainObjectOrArray(value)) {
+      this.executeObject(key, value);
+    } else {
+      this.setValue(key, value);
+    }
+
+  } catch (err) {
+    var self = this;
+    setImmediate(function(){
+      if (self.finished) return;
+
+      self.done(err);
+    });
+  }
+}
+
+
+
+
+// ------------------------------------------------------------------------------------------------ //
+//
+// The main entry point
+//
+// ------------------------------------------------------------------------------------------------ //
+
+
+
+
+/**
+ * Wrap the given generator `fn` and
+ * return a thunk.
+ *
+ * @param {Function} fn
+ * @return {Function}
+ * @api public
+ */
+
+module.exports = function(fn) {
+  var isGenFun = isGeneratorFunction(fn);
+
+  return function (done) {
+    var ctx = this;
+
+    // assume a generator has been passed in
+    var gen = fn;
+
+    // we only need to parse the arguments
+    // if gen is a generator function.
+    if (isGenFun) {
+      var args = slice.call(arguments), len = args.length;
+      var hasCallback = len && 'function' == typeof args[len - 1];
+      done = hasCallback ? args.pop() : error;
+      gen = fn.apply(ctx, args);
+    }
+
+    new Coroutine(gen).run(ctx, done || error);
+  }
 }

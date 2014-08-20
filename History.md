@@ -1,4 +1,19 @@
 
+3.1.0 / 2014-06-30
+==================
+
+ * remove `setImmediate()` shim for node 0.8. semi-backwards breaking.
+   Users are expected to shim themselves. Also returns CommonJS browser support.
+ * added key order preservation for objects. thanks @greim
+ * replace `q` with `bluebird` in benchmarks and tests
+  
+3.0.6 / 2014-05-03
+==================
+
+ * add `setImmediate()` fallback to `process.nextTick`
+ * remove duplicate code in toThunk
+ * update thunkify
+
 3.0.5 / 2014-03-17
 ==================
 
